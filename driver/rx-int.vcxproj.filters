@@ -12,11 +12,16 @@
     </Inf>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="rxint.c" />
+    <ClCompile Include="Detector.cpp" />
+    <ClCompile Include="Callbacks.cpp" />
+    <ClCompile Include="Driver.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="rxint.h" />
     <ClInclude Include="import.h" />
     <ClInclude Include="xxhash.h" />
+    <ClInclude Include="Common.hpp" />
+    <ClInclude Include="Wrappers.hpp" />
+    <ClInclude Include="Detector.hpp" />
+    <ClInclude Include="Callbacks.hpp" />
   </ItemGroup>
 </Project>

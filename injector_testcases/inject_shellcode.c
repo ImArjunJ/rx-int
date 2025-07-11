@@ -9,6 +9,12 @@ DWORD FindTargetPID(const wchar_t* targetName)
     PROCESSENTRY32W entry = {.dwSize = sizeof(entry)};
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 
+    if (snap == INVALID_HANDLE_VALUE)
+    {
+        printf("CreateToolhelp32Snapshot failed.\n");
+        return 0;
+    }
+
     while (Process32NextW(snap, &entry))
     {
         if (_wcsicmp(entry.szExeFile, targetName) == 0)
