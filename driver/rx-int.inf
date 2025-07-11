@@ -1,0 +1,62 @@
+;
+; rx-int.inf
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System ; TODO: specify appropriate Class
+ClassGuid   = {4d36e97d-e325-11ce-bfc1-08002be10318} ; TODO: specify appropriate ClassGuid
+Provider    = %ManufacturerName%
+CatalogFile = rx-int.cat
+DriverVer   = ; TODO: set DriverVer in stampinf property pages
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+rx-int.sys = 1,,
+
+;*****************************************
+; Install Section
+;*****************************************
+
+[Manufacturer]
+%ManufacturerName% = Standard,NT$ARCH$.10.0...16299 ; %13% support introduced in build 16299
+
+[Standard.NT$ARCH$.10.0...16299]
+%rx-int.DeviceDesc% = rx-int_Device, Root\rx-int ; TODO: edit hw-id
+
+[rx-int_Device.NT]
+CopyFiles = File_Copy
+
+[File_Copy]
+rx-int.sys
+
+;-------------- Service installation
+[rx-int_Device.NT.Services]
+AddService = rx-int,%SPSVCINST_ASSOCSERVICE%, rx-int_Service_Inst
+
+; -------------- rx-int driver install sections
+[rx-int_Service_Inst]
+DisplayName    = %rx-int.SVCDESC%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %13%\rx-int.sys
+
+[rx-int_Device.NT.Wdf]
+KmdfService = rx-int, rx-int_wdfsect
+
+[rx-int_wdfsect]
+KmdfLibraryVersion = $KMDFVERSION$
+
+[Strings]
+SPSVCINST_ASSOCSERVICE = 0x00000002
+ManufacturerName = "<Your manufacturer name>" ;TODO: Replace with your manufacturer name
+DiskName = "rx-int Installation Disk"
+rx-int.DeviceDesc = "rx-int Device"
+rx-int.SVCDESC = "rx-int Service"

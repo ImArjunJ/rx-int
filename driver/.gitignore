@@ -1,0 +1,91 @@
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio workspace cache
+.vs/
+
+# MonoDevelop
+*.pidb
+*.userprefs
+
+# Build results
+[Bb]in/
+[Oo]bj/
+build/
+[Bb]uild/
+x64/
+
+# NuGet
+*.nupkg
+# The packages folder can be ignored because of Package Restore
+**/packages/*
+# except build/, which is used as an MSBuild target.
+!**/packages/build/
+# Uncomment if necessary however generally it should be included in source control
+#!**/packages/repositories.config
+
+# Microsoft Azure Web App publish settings
+*.Publish.xml
+
+# TFS / Team Foundation
+$tf/
+
+# JetBrains Rider
+.idea/
+
+# Visual Studio Code
+.vscode/
+
+# DotCover
+*.dotCover
+
+# NCrunch
+_NCrunch_*
+.*crunch*.local.xml
+
+# MSTest test results
+[TestResults]/
+*.trx
+*.coverage
+*.coveragexml
+
+# Build directories for ASP.NET projects
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# Web publish folder
+wwwroot/
+
+# IIS Express
+/.vs/IISExpress/*
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Visual C++ cache files
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.ilc
+
+# SQL Server files
+*.mdf
+*.ldf
+*.ndf
+
+# Others
+*.cache
+*.log
+*.ilk
+*.pdb
+*.dll
+*.exe

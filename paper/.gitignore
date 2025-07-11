@@ -1,0 +1,46 @@
+# LaTeX intermediate files
+*.aux
+*.bbl
+*.blg
+*.brf
+*.fls
+*.fdb_latexmk
+*.log
+*.nav
+*.out
+*.pdfsync
+*.synctex.gz
+*.snm
+*.toc
+*.vrb
+*.xdv
+
+# Bibliography & index
+*.run.xml
+*.bcf
+*.blx.bib
+
+# Generated output
+*.lof
+*.lot
+*.lol
+*.idx
+*.ilg
+*.ind
+
+# Build directories
+_build/
+build/
+dist/
+
+# Editor swap and backup files
+*~
+.*.sw?
+*.bak
+*.backup
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
