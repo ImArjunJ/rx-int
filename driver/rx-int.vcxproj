@@ -135,12 +135,14 @@
     <ClCompile Include="Callbacks.cpp" />
     <ClCompile Include="Detector.cpp" />
     <ClCompile Include="Driver.cpp" />
+    <ClCompile Include="ExportResolver.cpp" />
     <ClCompile Include="Reconstructor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Callbacks.hpp" />
     <ClInclude Include="Common.hpp" />
     <ClInclude Include="Detector.hpp" />
+    <ClInclude Include="ExportResolver.hpp" />
     <ClInclude Include="Ioctl.hpp" />
     <ClInclude Include="Reconstructor.hpp" />
     <ClInclude Include="Wrappers.hpp" />

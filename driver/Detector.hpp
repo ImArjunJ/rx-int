@@ -2,6 +2,7 @@
 
 #include "Common.hpp"
 #include "Ioctl.hpp"
+#include "ExportResolver.hpp"
 
 namespace rx
 {
@@ -48,11 +49,13 @@ namespace rx
         static void VadScannerThread(PVOID StartContext);
         void ExtractKnownModules(PEPROCESS Process);
         void TakeVadSnapshot(PEPROCESS Process, util::kernel_array<MemoryRegionInfo, util::MAX_VAD_REGIONS>& snapshot, size_t& count);
-        void DumpPages(HANDLE ProcessId, PVOID base, SIZE_T regionSize, const util::kernel_array<ModuleRange, util::MAX_MODULES>& modules, size_t moduleCount);
-
+        void DumpPages(HANDLE ProcessId, PVOID base, SIZE_T regionSize);
         bool IsAddressInModuleList(PVOID addr) const;
         bool IsDuplicateHash(ULONGLONG hash);
         static bool IsExecutable(ULONG Protect);
+
+    private:
+        ExportResolver m_exportResolver;
 
         bool m_isStopping;
         KEVENT m_stopEvent;
