@@ -82,7 +82,7 @@ namespace rx
         NTSTATUS status = detector->m_exportResolver.BuildSnapshot(proc.get(), detector->m_knownModules, detector->m_moduleCount);
         if (NT_SUCCESS(status))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "[RX-INT] Successfully built export snapshot.\n");
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Successfully built export snapshot.\n");
         }
         else
         {
@@ -313,7 +313,7 @@ namespace rx
 
         if (IsAddressInModuleList(base))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "[RX-INT] Dump: Suppressing dump for %p as it is now part of a known module.\n", base);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Suppressing dump for %p as it is now part of a known module.\n", base);
             return;
         }
 
@@ -336,7 +336,7 @@ namespace rx
         ULONGLONG hash = XXH64(rawBuffer, totalBytesCopied, 0x1337);
         if (IsDuplicateHash(hash))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "[RX-INT] Dump: Duplicate hash for region %p, skipping.\n", base);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Duplicate hash for region %p, skipping.\n", base);
             ExFreePoolWithTag(rawBuffer, util::DUMP_TAG);
             return;
         }
