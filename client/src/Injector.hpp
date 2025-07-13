@@ -7,7 +7,6 @@ enum class InjectionMethod
 {
     ClassicRwx,
     StagedRwRx,
-    ManualMapErase,
     QueueUserApc,
     ModuleStomp
 };

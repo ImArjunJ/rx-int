@@ -181,9 +181,8 @@ void TUI::RenderInjectionMenu()
     {
         DrawMenuItem(5, '1', L"Classic RWX Injection");
         DrawMenuItem(6, '2', L"Staged RW->RX Injection");
-        DrawMenuItem(7, '3', L"Manual Map (Header Erase)");
-        DrawMenuItem(8, '4', L"Threadless (QueueUserAPC)");
-        DrawMenuItem(9, '5', L"Module Stomping (Not Implemented)");
+        DrawMenuItem(8, '3', L"Threadless (QueueUserAPC)");
+        DrawMenuItem(9, '4', L"Module Stomping (Not Implemented)");
         DrawString(1, 11, L"[ESC] Return to Main Menu", 0x08);
         m_currentMessage = L"Select injection type...";
     }
@@ -239,7 +238,6 @@ void TUI::RenderAttachMenu()
     }
     DrawString(1, 7, L"[ESC] Return to Main Menu", 0x08);
 }
-#include <iostream>
 void TUI::HandleAttachInput(const KEY_EVENT_RECORD& keyEvent)
 {
     if (keyEvent.wVirtualKeyCode == VK_ESCAPE)
@@ -342,14 +340,10 @@ void TUI::HandleInjectionInput(const KEY_EVENT_RECORD& keyEvent)
             m_uiState = UIState::InjectionSubmenu;
             break;
         case '3':
-            m_injectionMethod = InjectionMethod::ManualMapErase;
-            m_uiState = UIState::InjectionSubmenu;
-            break;
-        case '4':
             m_injectionMethod = InjectionMethod::QueueUserApc;
             m_uiState = UIState::InjectionSubmenu;
             break;
-        case '5':
+        case '4':
             m_injectionMethod = InjectionMethod::ModuleStomp;
             m_uiState = UIState::InjectionSubmenu;
             break;
