@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common.hpp"
+#include "Ioctl.hpp"
 
 namespace rx
 {
@@ -22,12 +23,6 @@ namespace rx
         ULONGLONG ContentHash;
     };
 
-    struct ModuleRange
-    {
-        PVOID BaseAddress;
-        SIZE_T Size;
-    };
-
     struct SelectionWorkContext
     {
         Detector* pDetector;
@@ -43,19 +38,17 @@ namespace rx
         NTSTATUS Start();
         void Stop();
 
-        void OnProcessNotify(PEPROCESS Process, HANDLE Pid, PPS_CREATE_NOTIFY_INFO Info);
         void OnThreadNotify(HANDLE ProcessId, HANDLE ThreadId, bool Create);
-
-    private:
-        static void SelectionThread(PVOID StartContext);
-        static void SelectionWorkItemRoutine(PVOID Context);
-        static void VadScannerThread(PVOID StartContext);
 
         void StartMonitoringProcess(HANDLE Pid);
         void StopMonitoringProcess();
+        void GetCurrentStatus(PRXINT_STATUS_INFO StatusInfo) const;
+
+    private:
+        static void VadScannerThread(PVOID StartContext);
         void ExtractKnownModules(PEPROCESS Process);
         void TakeVadSnapshot(PEPROCESS Process, util::kernel_array<MemoryRegionInfo, util::MAX_VAD_REGIONS>& snapshot, size_t& count);
-        void DumpPages(HANDLE ProcessId, PVOID base, SIZE_T regionSize);
+        void DumpPages(HANDLE ProcessId, PVOID base, SIZE_T regionSize, const util::kernel_array<ModuleRange, util::MAX_MODULES>& modules, size_t moduleCount);
 
         bool IsAddressInModuleList(PVOID addr) const;
         bool IsDuplicateHash(ULONGLONG hash);

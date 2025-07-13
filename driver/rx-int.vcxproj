@@ -73,9 +73,11 @@
   <PropertyGroup />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <EnableInf2cat>false</EnableInf2cat>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
+    <EnableInf2cat>false</EnableInf2cat>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
@@ -133,14 +135,19 @@
     <ClCompile Include="Callbacks.cpp" />
     <ClCompile Include="Detector.cpp" />
     <ClCompile Include="Driver.cpp" />
+    <ClCompile Include="Reconstructor.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Callbacks.hpp" />
     <ClInclude Include="Common.hpp" />
     <ClInclude Include="Detector.hpp" />
-    <ClInclude Include="import.h" />
+    <ClInclude Include="Ioctl.hpp" />
+    <ClInclude Include="Reconstructor.hpp" />
     <ClInclude Include="Wrappers.hpp" />
     <ClInclude Include="xxhash.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitignore" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

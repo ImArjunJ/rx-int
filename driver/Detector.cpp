@@ -1,6 +1,8 @@
 #include "Detector.hpp"
 
+#include "Reconstructor.hpp"
 #include "Wrappers.hpp"
+
 
 namespace rx
 {
@@ -16,67 +18,14 @@ namespace rx
     NTSTATUS Detector::Start()
     {
         m_isStopping = false;
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] C++ Detector started successfully.\n");
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] rx-int driver loaded\n");
         return STATUS_SUCCESS;
     }
 
     void Detector::Stop()
     {
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] C++ Detector stopping...\n");
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] rx-int driver unloaded\n");
         StopMonitoringProcess();
-    }
-
-    void Detector::OnProcessNotify(PEPROCESS Process, HANDLE Pid, PPS_CREATE_NOTIFY_INFO Info)
-    {
-        UNREFERENCED_PARAMETER(Process);
-        if (m_isStopping)
-            return;
-
-        if (Info) // Process Creation
-        {
-            if (!Info->ImageFileName || !wcsstr(Info->ImageFileName->Buffer, L"gmod.exe"))
-                return;
-
-            util::SpinLockGuard lock(&m_candidateLock);
-            if (m_candidateCount >= m_candidates.size())
-                return;
-
-            auto& newCandidate = m_candidates[m_candidateCount];
-            newCandidate.Pid = Pid;
-            KeQuerySystemTime(&newCandidate.CreateTime);
-            newCandidate.Alive = true;
-            m_candidateCount++;
-
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Found candidate gmod.exe PID %p\n", Pid);
-
-            if (!m_monitoredPid)
-            {
-                auto* workContext = static_cast<SelectionWorkContext*>(ExAllocatePoolWithTag(NonPagedPoolNx, sizeof(SelectionWorkContext), util::POOL_TAG));
-                if (workContext)
-                {
-                    workContext->pDetector = this;
-                    ExInitializeWorkItem(&workContext->WorkItem, SelectionWorkItemRoutine, workContext);
-                    ExQueueWorkItem(&workContext->WorkItem, DelayedWorkQueue);
-                }
-            }
-        }
-        else // Process Termination
-        {
-            util::SpinLockGuard lock(&m_candidateLock);
-            for (size_t i = 0; i < m_candidateCount; ++i)
-            {
-                if (m_candidates[i].Pid == Pid)
-                {
-                    m_candidates[i].Alive = false;
-                    break;
-                }
-            }
-
-            if (Pid == m_monitoredPid)
-            {
-                StopMonitoringProcess();
-            }
-        }
     }
 
     void Detector::OnThreadNotify(HANDLE ProcessId, HANDLE ThreadId, bool Create)
@@ -107,53 +56,9 @@ namespace rx
         status = ZwQueryVirtualMemory(ZwCurrentProcess(), startAddress, MemoryBasicInformation, &mbi, sizeof(mbi), NULL);
         if (NT_SUCCESS(status) && mbi.Type == MEM_PRIVATE && !IsAddressInModuleList(mbi.BaseAddress))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] THREAD: Suspicious start @ %p. Dumping.\n", startAddress);
-            DumpPages(ProcessId, mbi.BaseAddress, mbi.RegionSize);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: suspicious start @ %p. dumping... \n", startAddress);
+            DumpPages(ProcessId, mbi.BaseAddress, mbi.RegionSize, m_knownModules, m_moduleCount);
         }
-    }
-    void Detector::SelectionWorkItemRoutine(PVOID Context)
-    {
-        auto* workContext = static_cast<SelectionWorkContext*>(Context);
-        auto* detector = workContext->pDetector;
-
-        ExFreePoolWithTag(workContext, util::POOL_TAG);
-
-        HANDLE selectionThreadHandle;
-        NTSTATUS status = PsCreateSystemThread(&selectionThreadHandle, THREAD_ALL_ACCESS, NULL, NULL, NULL, SelectionThread, detector);
-        if (NT_SUCCESS(status))
-        {
-            ZwClose(selectionThreadHandle);
-        }
-    }
-
-    void Detector::SelectionThread(PVOID StartContext)
-    {
-        auto* detector = static_cast<Detector*>(StartContext);
-
-        LARGE_INTEGER delay;
-        delay.QuadPart = -50000000LL; // 5 seconds
-        KeDelayExecutionThread(KernelMode, FALSE, &delay);
-
-        HANDLE bestPid = nullptr;
-        {
-            util::SpinLockGuard lock(&detector->m_candidateLock);
-            LARGE_INTEGER latest = {0};
-            for (size_t i = 0; i < detector->m_candidateCount; ++i)
-            {
-                if (detector->m_candidates[i].Alive && detector->m_candidates[i].CreateTime.QuadPart > latest.QuadPart)
-                {
-                    latest = detector->m_candidates[i].CreateTime;
-                    bestPid = detector->m_candidates[i].Pid;
-                }
-            }
-        }
-        bestPid = detector->m_candidates[0].Pid;
-        if (bestPid)
-        {
-            detector->StartMonitoringProcess(bestPid);
-        }
-
-        PsTerminateSystemThread(STATUS_SUCCESS);
     }
 
     void Detector::VadScannerThread(PVOID StartContext)
@@ -176,7 +81,7 @@ namespace rx
 
         detector->ExtractKnownModules(proc.get());
         detector->TakeVadSnapshot(proc.get(), detector->m_vadBaseline, detector->m_vadBaselineCount);
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] VAD: Baseline complete for PID %p with %zu regions.\n", pid, detector->m_vadBaselineCount);
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: baseline complete for PID %p with %zu regions\n", pid, detector->m_vadBaselineCount);
 
         auto* currentSnapshot = new (PagedPool, util::POOL_TAG) util::kernel_array<MemoryRegionInfo, util::MAX_VAD_REGIONS>;
         if (!currentSnapshot)
@@ -211,21 +116,21 @@ namespace rx
                         foundInBaseline = true;
                         if (IsExecutable(currentRegion.Protect) && !IsExecutable(baselineRegion.Protect))
                         {
-                            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] VAD: Permission escalation to EXECUTE at %p! Dumping.\n", currentRegion.BaseAddress);
-                            detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
+                            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: permission escalation to EXECUTE at %p! dumping...\n", currentRegion.BaseAddress);
+                            detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize, detector->m_knownModules, detector->m_moduleCount);
                         }
                         else if (IsExecutable(currentRegion.Protect) && currentRegion.ContentHash != baselineRegion.ContentHash)
                         {
-                            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] VAD: Self-modifying code detected at %p! Dumping.\n", currentRegion.BaseAddress);
-                            detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
+                            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: self-modifying code detected at %p! dumping...\n", currentRegion.BaseAddress);
+                            detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize, detector->m_knownModules, detector->m_moduleCount);
                         }
                         break;
                     }
                 }
                 if (!foundInBaseline && IsExecutable(currentRegion.Protect))
                 {
-                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] VAD: New executable private region at %p! Dumping.\n", currentRegion.BaseAddress);
-                    detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: new executable private region at %p! dumping...\n", currentRegion.BaseAddress);
+                    detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize, detector->m_knownModules, detector->m_moduleCount);
                 }
             }
         }
@@ -269,33 +174,91 @@ namespace rx
             m_vadThreadHandle = nullptr;
         }
         m_monitoredPid = nullptr;
+
+        {
+            util::FastMutexGuard lock(&m_dumpHashLock);
+            m_dumpHashCount = 0;
+        }
+        m_moduleCount = 0;
+        m_vadBaselineCount = 0;
+    }
+
+    void Detector::GetCurrentStatus(PRXINT_STATUS_INFO StatusInfo) const
+    {
+        if (!StatusInfo)
+            return;
+
+        if (m_monitoredPid != nullptr)
+        {
+            StatusInfo->IsMonitoring = TRUE;
+            StatusInfo->MonitoredPid = reinterpret_cast<ULONG>(m_monitoredPid);
+        }
+        else
+        {
+            StatusInfo->IsMonitoring = FALSE;
+            StatusInfo->MonitoredPid = 0;
+        }
     }
 
     void Detector::ExtractKnownModules(PEPROCESS Process)
     {
-        util::ProcessAttacher attacher(Process);
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: starting module enumeration via PEB\n");
         m_moduleCount = 0;
-        ULONG modulesSize = 0;
-        NTSTATUS status = ZwQueryInformationProcess(ZwCurrentProcess(), ProcessInfoClass::ProcessModules, NULL, 0, &modulesSize);
-        if (status != STATUS_INFO_LENGTH_MISMATCH)
-            return;
 
-        auto* modules = static_cast<RTL_PROCESS_MODULES*>(ExAllocatePoolWithTag(PagedPool, modulesSize, util::POOL_TAG));
-        if (!modules)
-            return;
+        util::ProcessAttacher attacher(Process);
 
-        status = ZwQueryInformationProcess(ZwCurrentProcess(), ProcessInfoClass::ProcessModules, modules, modulesSize, &modulesSize);
-        if (NT_SUCCESS(status))
+        PPEB pPeb = PsGetProcessPeb(Process);
+        if (!pPeb)
         {
-            for (ULONG i = 0; i < modules->NumberOfModules && m_moduleCount < m_knownModules.size(); ++i)
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: could not get PEB pointer\n");
+            return;
+        }
+
+        __try
+        {
+            if (!pPeb->Ldr || !pPeb->Ldr->InMemoryOrderModuleList.Flink)
             {
-                auto& entry = m_knownModules[m_moduleCount];
-                entry.BaseAddress = modules->Modules[i].ImageBase;
-                entry.Size = modules->Modules[i].ImageSize;
-                m_moduleCount++;
+                DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: PEB or ldr list is null\n");
+                return;
+            }
+
+            PLIST_ENTRY head = &pPeb->Ldr->InMemoryOrderModuleList;
+            PLIST_ENTRY curr = head->Flink;
+
+            while (curr != head && m_moduleCount < m_knownModules.size())
+            {
+                auto* entry = CONTAINING_RECORD(curr, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+
+                if (entry && entry->DllBase && entry->SizeOfImage)
+                {
+                    auto& mod = m_knownModules[m_moduleCount];
+                    mod.BaseAddress = entry->DllBase;
+                    mod.Size = entry->SizeOfImage;
+
+                    if (entry->FullDllName.Buffer && entry->FullDllName.Length > 0)
+                    {
+                        RtlCopyMemory(mod.Path, entry->FullDllName.Buffer, min(entry->FullDllName.Length, sizeof(mod.Path) - sizeof(WCHAR)));
+                        mod.Path[_countof(mod.Path) - 1] = L'\0'; // Ensure null termination
+                    }
+                    else
+                    {
+                        mod.Path[0] = L'\0';
+                    }
+
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "  -> module %2zu: %-25wZ | base: %p | size: 0x%lX\n", m_moduleCount, &entry->BaseDllName, mod.BaseAddress,
+                               mod.Size);
+
+                    m_moduleCount++;
+                }
+                curr = curr->Flink;
             }
         }
-        ExFreePool(modules);
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: exception while walking PEB ldr list\n");
+        }
+
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: finished. stored %zu modules\n", m_moduleCount);
     }
 
     void Detector::TakeVadSnapshot(PEPROCESS Process, util::kernel_array<MemoryRegionInfo, util::MAX_VAD_REGIONS>& snapshot, size_t& count)
@@ -331,15 +294,28 @@ namespace rx
         }
     }
 
-    void Detector::DumpPages(HANDLE ProcessId, PVOID base, SIZE_T regionSize)
+    void Detector::DumpPages(HANDLE ProcessId, PVOID base, SIZE_T regionSize, const util::kernel_array<ModuleRange, util::MAX_MODULES>& modules, size_t moduleCount)
     {
         util::ProcessReference proc(ProcessId);
         if (!proc)
+        {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to get process reference for PID %p\n", ProcessId);
             return;
+        }
+
+        ExtractKnownModules(proc.get());
+        if (IsAddressInModuleList(base))
+        {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: suppressing dump for %p because it is part of a known module\n", base);
+            return;
+        }
 
         auto* buffer = static_cast<unsigned char*>(ExAllocatePoolWithTag(NonPagedPoolNx, regionSize, util::DUMP_TAG));
         if (!buffer)
+        {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to allocate %zu bytes for dump\n", regionSize);
             return;
+        }
 
         SIZE_T totalBytesCopied = 0;
         util::ProcessAttacher attacher(proc.get());
@@ -361,12 +337,50 @@ namespace rx
                 InitializeObjectAttributes(&oa, &path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
                 IO_STATUS_BLOCK iosb;
                 HANDLE file;
-                if (NT_SUCCESS(ZwCreateFile(&file, FILE_GENERIC_WRITE, &oa, &iosb, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OVERWRITE_IF, FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0)))
+                status = ZwCreateFile(&file, FILE_GENERIC_WRITE, &oa, &iosb, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OVERWRITE_IF, FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+                if (NT_SUCCESS(status))
                 {
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: writing %zu bytes from %p to %S\n", totalBytesCopied, base, filename);
                     ZwWriteFile(file, NULL, NULL, NULL, &iosb, buffer, (ULONG) totalBytesCopied, NULL, NULL);
                     ZwClose(file);
                 }
+                else
+                {
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to create file %S, status: 0x%X, util::DUMPPATH=%ls\n", filename, status,
+                               util::DUMP_PATH);
+                }
+
+                ULONG reportSize = 0;
+                PCHAR reportBuffer = Reconstructor::CreateImportReport(proc.get(), buffer, totalBytesCopied, base, m_knownModules, m_moduleCount, &reportSize);
+                if (reportBuffer && reportSize > 0)
+                {
+                    WCHAR txt_filename[512];
+                    RtlStringCbPrintfW(txt_filename, sizeof(txt_filename), L"\\SystemRoot\\Temp\\report_%llu.txt", timestamp.QuadPart);
+
+                    UNICODE_STRING txt_path;
+                    RtlInitUnicodeString(&txt_path, txt_filename);
+                    OBJECT_ATTRIBUTES oa;
+                    InitializeObjectAttributes(&oa, &txt_path, OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+                    HANDLE hFile_txt;
+                    IO_STATUS_BLOCK iosb_txt;
+                    status = ZwCreateFile(&hFile_txt, FILE_GENERIC_WRITE, &oa, &iosb_txt, NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OVERWRITE_IF, FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+                    if (NT_SUCCESS(status))
+                    {
+                        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: dumping import report to %S\n", txt_filename);
+                        ZwWriteFile(hFile_txt, NULL, NULL, NULL, &iosb_txt, reportBuffer, reportSize, NULL, NULL);
+                        ZwClose(hFile_txt);
+                    }
+                    ExFreePoolWithTag(reportBuffer, util::POOL_TAG);
+                }
             }
+            else
+            {
+                DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: duplicate hash, skipping dump for address %p\n", base);
+            }
+        }
+        else
+        {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to copy memory from %p, status: 0x%X\n", base, status);
         }
         ExFreePool(buffer);
     }

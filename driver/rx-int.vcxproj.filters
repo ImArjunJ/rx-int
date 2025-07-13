@@ -15,13 +15,18 @@
     <ClCompile Include="Detector.cpp" />
     <ClCompile Include="Callbacks.cpp" />
     <ClCompile Include="Driver.cpp" />
+    <ClCompile Include="Reconstructor.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="import.h" />
     <ClInclude Include="xxhash.h" />
     <ClInclude Include="Common.hpp" />
     <ClInclude Include="Wrappers.hpp" />
     <ClInclude Include="Detector.hpp" />
     <ClInclude Include="Callbacks.hpp" />
+    <ClInclude Include="Ioctl.hpp" />
+    <ClInclude Include="Reconstructor.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitignore" />
   </ItemGroup>
 </Project>
