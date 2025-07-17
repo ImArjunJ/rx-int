@@ -9,7 +9,6 @@ int main()
     std::cout << "Waiting for injection. This window will remain open.\n";
     std::cout << "Press Enter in this window to exit cleanly.\n";
 
-    // Wait indefinitely until the user presses Enter.
     std::cin.get();
 
     return 0;

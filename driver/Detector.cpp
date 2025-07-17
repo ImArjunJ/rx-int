@@ -2,7 +2,6 @@
 
 #include "Wrappers.hpp"
 
-
 namespace rx
 {
     Detector::Detector()
@@ -50,12 +49,40 @@ namespace rx
         if (!proc)
             return;
 
+        bool isSuspicious = false;
         util::ProcessAttacher attacher(proc.get());
         MEMORY_BASIC_INFORMATION mbi;
         status = ZwQueryVirtualMemory(ZwCurrentProcess(), startAddress, MemoryBasicInformation, &mbi, sizeof(mbi), NULL);
-        if (NT_SUCCESS(status) && mbi.Type == MEM_PRIVATE && !IsAddressInModuleList(mbi.BaseAddress))
+        if (NT_SUCCESS(status))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: suspicious start @ %p. dumping... \n", startAddress);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: start address %p in process %p\n", startAddress, ProcessId);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: attributes -> Type: 0x%X, State: 0x%X, Protect: 0x%X\n", mbi.Type, mbi.State, mbi.Protect);
+            if (mbi.Type == MEM_PRIVATE)
+            {
+                if (!IsAddressInModuleList(mbi.BaseAddress))
+                {
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: suspicious start (1) @ %p. dumping... \n", startAddress);
+                    isSuspicious = true;
+                }
+            }
+            else if (mbi.Type == MEM_MAPPED)
+            {
+                // thread starts in mapped memory. is it a real file or a private section?
+                HANDLE hSection = NULL;
+                OBJECT_ATTRIBUTES sectionAttr;
+                if (IsExecutable(mbi.Protect))
+                {
+                    if (!IsAddressInModuleList(mbi.BaseAddress))
+                    {
+                        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: suspicious start (2) @ %p. dumping... \n", startAddress);
+                        isSuspicious = true;
+                    }
+                }
+            }
+        }
+
+        if (isSuspicious)
+        {
             DumpPages(ProcessId, mbi.BaseAddress, mbi.RegionSize);
         }
     }
@@ -82,11 +109,11 @@ namespace rx
         NTSTATUS status = detector->m_exportResolver.BuildSnapshot(proc.get(), detector->m_knownModules, detector->m_moduleCount);
         if (NT_SUCCESS(status))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Successfully built export snapshot.\n");
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: successfully built export snapshot\n");
         }
         else
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Failed to build export snapshot: 0x%X\n", status);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: failed to build export snapshot: 0x%X\n", status);
         }
         detector->TakeVadSnapshot(proc.get(), detector->m_vadBaseline, detector->m_vadBaselineCount);
         DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: baseline complete for PID %p with %zu regions\n", pid, detector->m_vadBaselineCount);
@@ -101,14 +128,12 @@ namespace rx
 
         while (!detector->m_isStopping)
         {
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: running scan\n");
             size_t currentSnapshotCount = 0;
             LARGE_INTEGER delay;
             delay.QuadPart = -30000000LL;
             KeWaitForSingleObject(&detector->m_stopEvent, Executive, KernelMode, FALSE, &delay);
             if (detector->m_isStopping)
-                break;
-
-            if (KeWaitForSingleObject(proc.get(), Executive, KernelMode, TRUE, &delay) != STATUS_TIMEOUT)
                 break;
 
             detector->TakeVadSnapshot(proc.get(), *currentSnapshot, currentSnapshotCount);
@@ -141,6 +166,8 @@ namespace rx
                     detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
                 }
             }
+            
+            KeClearEvent(&detector->m_stopEvent);
         }
         delete currentSnapshot;
         PsReleaseProcessExitSynchronization(proc.get());
@@ -210,7 +237,7 @@ namespace rx
 
     void Detector::ExtractKnownModules(PEPROCESS Process)
     {
-        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: starting module enumeration via PEB\n");
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: starting module enumeration via peb\n");
         m_moduleCount = 0;
 
         util::ProcessAttacher attacher(Process);
@@ -218,7 +245,7 @@ namespace rx
         PPEB pPeb = PsGetProcessPeb(Process);
         if (!pPeb)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: could not get PEB pointer\n");
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: could not get peb pointer\n");
             return;
         }
 
@@ -226,7 +253,7 @@ namespace rx
         {
             if (!pPeb->Ldr || !pPeb->Ldr->InMemoryOrderModuleList.Flink)
             {
-                DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: PEB or ldr list is null\n");
+                DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: peb or ldr list is null\n");
                 return;
             }
 
@@ -263,7 +290,7 @@ namespace rx
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: exception while walking PEB ldr list\n");
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: exception while walking peb ldr list\n");
         }
 
         DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ekm: finished. stored %zu modules\n", m_moduleCount);
@@ -278,7 +305,7 @@ namespace rx
 
         while (NT_SUCCESS(ZwQueryVirtualMemory(ZwCurrentProcess(), addr, MemoryBasicInformation, &mbi, sizeof(mbi), NULL)) && count < snapshot.size())
         {
-            if (mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE)
+            if (mbi.State == MEM_COMMIT && (mbi.Type == MEM_PRIVATE || (mbi.Type == MEM_IMAGE && IsExecutable(mbi.Protect))))
             {
                 auto& info = snapshot[count];
                 info.BaseAddress = mbi.BaseAddress;
@@ -307,20 +334,14 @@ namespace rx
         util::ProcessReference proc(ProcessId);
         if (!proc)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Failed to get process reference for PID %p\n", ProcessId);
-            return;
-        }
-
-        if (IsAddressInModuleList(base))
-        {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Suppressing dump for %p as it is now part of a known module.\n", base);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to get process reference for pid %p\n", ProcessId);
             return;
         }
 
         auto* rawBuffer = static_cast<unsigned char*>(ExAllocatePoolWithTag(NonPagedPoolNx, regionSize, util::DUMP_TAG));
         if (!rawBuffer)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Failed to allocate buffer for dump.\n");
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to allocate buffer\n");
             return;
         }
 
@@ -328,7 +349,7 @@ namespace rx
         NTSTATUS status = MmCopyVirtualMemory(proc.get(), base, PsGetCurrentProcess(), rawBuffer, regionSize, KernelMode, &totalBytesCopied);
         if (!NT_SUCCESS(status) || totalBytesCopied == 0)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Failed to copy memory from %p, status: 0x%X\n", base, status);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to copy memory from %p, status: 0x%X\n", base, status);
             ExFreePoolWithTag(rawBuffer, util::DUMP_TAG);
             return;
         }
@@ -336,7 +357,7 @@ namespace rx
         ULONGLONG hash = XXH64(rawBuffer, totalBytesCopied, 0x1337);
         if (IsDuplicateHash(hash))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Duplicate hash for region %p, skipping.\n", base);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: duplicate hash for region %p, skipping\n", base);
             ExFreePoolWithTag(rawBuffer, util::DUMP_TAG);
             return;
         }
@@ -358,16 +379,17 @@ namespace rx
         {
             ZwWriteFile(hFile_bin, NULL, NULL, NULL, &iosb_bin, rawBuffer, (ULONG) totalBytesCopied, NULL, NULL);
             ZwClose(hFile_bin);
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] Dump: Successfully wrote %zu raw bytes to %S\n", totalBytesCopied, bin_filename);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: successfully wrote %zu raw bytes to %S\n", totalBytesCopied, bin_filename);
         }
 
         const ULONG reportBufferSize = 16 * 1024;
         PCHAR reportBuffer = (PCHAR) ExAllocatePoolWithTag(NonPagedPoolNx, reportBufferSize, util::POOL_TAG);
+        bool shouldWriteReport = false;
         if (reportBuffer)
         {
             RtlZeroMemory(reportBuffer, reportBufferSize);
             ULONG currentOffset = 0;
-            RtlStringCbPrintfA(reportBuffer, reportBufferSize, "[RX-INT] Import Analysis Report for region at %p (size: %zu)\r\n\r\n", base, totalBytesCopied);
+            RtlStringCbPrintfA(reportBuffer, reportBufferSize, "[RX-INT] dump: import analysis report for region at %p (size: %zu)\r\n\r\n", base, totalBytesCopied);
             currentOffset = (ULONG) strlen(reportBuffer);
 
             for (size_t i = 0; i <= totalBytesCopied - sizeof(PVOID); i += sizeof(PVOID))
@@ -379,7 +401,7 @@ namespace rx
                 {
                     char tempLine[512];
                     RtlStringCbPrintfA(tempLine, sizeof(tempLine), "  [V_ADDR: 0x%p] contains pointer to -> %s\r\n", (unsigned char*) base + i, symbolName);
-
+                    shouldWriteReport = true;
                     if (currentOffset + strlen(tempLine) < reportBufferSize)
                     {
                         RtlStringCbCatA(reportBuffer, reportBufferSize, tempLine);
@@ -388,7 +410,7 @@ namespace rx
                 }
             }
 
-            if (currentOffset > strlen("[RX-INT] Import Analysis Report for region at %p (size: %zu)\r\n\r\n"))
+            if (currentOffset > strlen("[RX-INT] dump: import analysis report for region at %p (size: %zu)\r\n\r\n") && shouldWriteReport)
             {
                 WCHAR txt_filename[512];
                 RtlStringCbPrintfW(txt_filename, sizeof(txt_filename), L"\\SystemRoot\\Temp\\RX_REPORT_%llu.txt", timestamp.QuadPart);
@@ -402,6 +424,7 @@ namespace rx
                 if (NT_SUCCESS(status))
                 {
                     ZwWriteFile(hFile_txt, NULL, NULL, NULL, &iosb_txt, reportBuffer, currentOffset, NULL, NULL);
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: successfully wrote import analysis report to %S\n", txt_filename);
                     ZwClose(hFile_txt);
                 }
             }

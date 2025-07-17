@@ -28,7 +28,6 @@ bool Driver::StartMonitoring(unsigned long pid, const std::wstring& dumpPath)
     RXINT_MONITOR_INFO info = {0};
     info.ProcessId = pid;
     wcscpy_s(info.DumpPath, _countof(info.DumpPath), dumpPath.c_str());
-    MessageBoxW(NULL, info.DumpPath, L"Dump Path", MB_OK);
 
     DWORD bytesReturned = 0;
     return DeviceIoControl(m_hDevice, IOCTL_RXINT_START_MONITORING, &info, sizeof(info), NULL, 0, &bytesReturned, NULL);

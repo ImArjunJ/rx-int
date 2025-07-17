@@ -22,6 +22,9 @@ namespace rx
         SIZE_T RegionSize;
         ULONG Protect;
         ULONGLONG ContentHash;
+
+        ULONG OriginalProtect; // The protection before we added the guard bit
+        bool IsGuarded;        // Flag to indicate we have set a trap on this region
     };
 
     struct SelectionWorkContext

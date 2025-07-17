@@ -101,7 +101,7 @@ NTSTATUS RxInt_DeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
             valid = false;
         if (!valid)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ioctl: invalid DumpPath %ls\n", info->DumpPath);
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] ioctl: invalid dump path %ls\n", info->DumpPath);
             wcsncpy(rx::util::DUMP_PATH, L"\\SystemRoot\\Temp\\dump_%llu.bin", 259);
             rx::util::DUMP_PATH[259] = L'\0';
         }

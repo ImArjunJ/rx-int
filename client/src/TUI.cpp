@@ -181,14 +181,40 @@ void TUI::RenderInjectionMenu()
     {
         DrawMenuItem(5, '1', L"Classic RWX Injection");
         DrawMenuItem(6, '2', L"Staged RW->RX Injection");
-        DrawMenuItem(8, '3', L"Threadless (QueueUserAPC)");
-        DrawMenuItem(9, '4', L"Module Stomping (Not Implemented)");
-        DrawString(1, 11, L"[ESC] Return to Main Menu", 0x08);
+        DrawMenuItem(7, '3', L"Threadless (QueueUserAPC)");
+        DrawMenuItem(8, '4', L"Module Stomping");
+        DrawMenuItem(9, '5', L"VAD Evasion");
+        DrawMenuItem(10, '6', L"VAD Evasion (Puts)");
+        DrawString(1, 12, L"[ESC] Return to Main Menu", 0x08);
         m_currentMessage = L"Select injection type...";
     }
     else
     {
-        std::wstring methodText = (m_injectionMethod == InjectionMethod::ClassicRwx) ? L"Classic RWX" : L"Staged RW->RX";
+        std::wstring methodText;
+        switch (m_injectionMethod)
+        {
+        case InjectionMethod::ClassicRwx:
+            methodText = L"Classic RWX";
+            break;
+        case InjectionMethod::StagedRwRx:
+            methodText = L"Staged RW->RX";
+            break;
+        case InjectionMethod::QueueUserApc:
+            methodText = L"Threadless (QueueUserAPC)";
+            break;
+        case InjectionMethod::ModuleStomp:
+            methodText = L"Module Stomping";
+            break;
+        case InjectionMethod::VadEvasion:
+            methodText = L"VAD Evasion";
+            break;
+        case InjectionMethod::VadEvasionPuts:
+            methodText = L"VAD Evasion (Puts)";
+            break;
+        default:
+            methodText = L"Unknown";
+            break;
+        }
         DrawString(1, 3, L"--- Injecting: " + methodText + L" ---", 0x0B);
         DrawString(1, 5, L"Enter Target PID, then press ENTER:", 0x0F);
         DrawString(1, 6, L"> " + m_inputBuffer, 0x0B);
@@ -197,7 +223,6 @@ void TUI::RenderInjectionMenu()
 
 void TUI::HandleMainMenuInput(const KEY_EVENT_RECORD& keyEvent)
 {
-    m_currentMessage.clear();
     switch (keyEvent.uChar.AsciiChar)
     {
     case '1':
@@ -232,7 +257,7 @@ void TUI::RenderAttachMenu()
     }
     else
     {
-        DrawString(1, 3, L"Enter PID to monitor: " + m_inputBuffer, 0x07); // Show the entered PID in gray
+        DrawString(1, 3, L"Enter PID to monitor: " + m_inputBuffer, 0x07);
         DrawString(1, 4, L"Enter dump path format (or blank for default), then press ENTER:", 0x0F);
         DrawString(1, 5, L"> " + m_inputBuffer2, 0x0B);
     }
@@ -333,21 +358,26 @@ void TUI::HandleInjectionInput(const KEY_EVENT_RECORD& keyEvent)
         {
         case '1':
             m_injectionMethod = InjectionMethod::ClassicRwx;
-            m_uiState = UIState::InjectionSubmenu;
             break;
         case '2':
             m_injectionMethod = InjectionMethod::StagedRwRx;
-            m_uiState = UIState::InjectionSubmenu;
             break;
         case '3':
             m_injectionMethod = InjectionMethod::QueueUserApc;
-            m_uiState = UIState::InjectionSubmenu;
             break;
         case '4':
             m_injectionMethod = InjectionMethod::ModuleStomp;
-            m_uiState = UIState::InjectionSubmenu;
             break;
+        case '5':
+            m_injectionMethod = InjectionMethod::VadEvasion;
+            break;
+        case '6':
+            m_injectionMethod = InjectionMethod::VadEvasionPuts;
+            break;
+        default:
+            return;
         }
+        m_uiState = UIState::InjectionSubmenu;
         m_inputBuffer.clear();
     }
     else if (m_uiState == UIState::InjectionSubmenu)

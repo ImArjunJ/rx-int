@@ -5,6 +5,7 @@
 #include "xxhash.h"
 
 #define THREAD_QUERY_INFORMATION (0x0040)
+#define MEM_IMAGE 0x01000000
 
 namespace rx
 {
@@ -259,6 +260,8 @@ extern "C"
     NTKERNELAPI NTSTATUS PsAcquireProcessExitSynchronization(_In_ PEPROCESS Process);
 
     NTKERNELAPI VOID PsReleaseProcessExitSynchronization(_In_ PEPROCESS Process);
+
+    NTSTATUS NTAPI ZwProtectVirtualMemory(_In_ HANDLE ProcessHandle, _Inout_ PVOID* BaseAddress, _Inout_ PSIZE_T RegionSize, _In_ ULONG NewProtect, _Out_ PULONG OldProtect);
 }
 
 typedef struct _RTL_PROCESS_MODULE_INFORMATION
