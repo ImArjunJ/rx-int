@@ -63,7 +63,6 @@ namespace rx
         bool m_isStopping;
         KEVENT m_stopEvent;
         HANDLE m_vadThreadHandle;
-        HANDLE m_selectionThreadHandle;
 
         // Use a SpinLock because OnProcessNotify can be called at DISPATCH_LEVEL
         KSPIN_LOCK m_candidateLock;

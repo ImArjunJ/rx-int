@@ -5,7 +5,7 @@
 namespace rx
 {
     Detector::Detector()
-        : m_isStopping(false), m_vadThreadHandle(nullptr), m_selectionThreadHandle(nullptr), m_candidateCount(0), m_monitoredPid(nullptr), m_dumpHashCount(0), m_moduleCount(0),
+        : m_isStopping(false), m_vadThreadHandle(nullptr), m_candidateCount(0), m_monitoredPid(nullptr), m_dumpHashCount(0), m_moduleCount(0),
           m_vadBaselineCount(0)
     {
         KeInitializeEvent(&m_stopEvent, NotificationEvent, FALSE);
@@ -55,8 +55,6 @@ namespace rx
         status = ZwQueryVirtualMemory(ZwCurrentProcess(), startAddress, MemoryBasicInformation, &mbi, sizeof(mbi), NULL);
         if (NT_SUCCESS(status))
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: start address %p in process %p\n", startAddress, ProcessId);
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: attributes -> Type: 0x%X, State: 0x%X, Protect: 0x%X\n", mbi.Type, mbi.State, mbi.Protect);
             if (mbi.Type == MEM_PRIVATE)
             {
                 if (!IsAddressInModuleList(mbi.BaseAddress))
@@ -77,6 +75,13 @@ namespace rx
                         DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: suspicious start (2) @ %p. dumping... \n", startAddress);
                         isSuspicious = true;
                     }
+                }
+            }
+            else if (mbi.Type == MEM_IMAGE && IsExecutable(mbi.Protect))
+            {
+                if (m_vadThreadHandle)
+                {
+                    KeSetEvent(&m_stopEvent, 0, FALSE);
                 }
             }
         }
@@ -128,10 +133,9 @@ namespace rx
 
         while (!detector->m_isStopping)
         {
-            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: running scan\n");
             size_t currentSnapshotCount = 0;
             LARGE_INTEGER delay;
-            delay.QuadPart = -30000000LL;
+            delay.QuadPart = -10000000LL;
             KeWaitForSingleObject(&detector->m_stopEvent, Executive, KernelMode, FALSE, &delay);
             if (detector->m_isStopping)
                 break;
@@ -152,7 +156,7 @@ namespace rx
                             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: permission escalation to EXECUTE at %p! dumping...\n", currentRegion.BaseAddress);
                             detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
                         }
-                        else if (IsExecutable(currentRegion.Protect) && currentRegion.ContentHash != baselineRegion.ContentHash)
+                        else if (currentRegion.ContentHash != baselineRegion.ContentHash && IsExecutable(currentRegion.Protect))
                         {
                             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: self-modifying code detected at %p! dumping...\n", currentRegion.BaseAddress);
                             detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
