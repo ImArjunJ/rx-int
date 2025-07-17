@@ -14,14 +14,18 @@ namespace rx
     {
         wchar_t ModuleName[64];
         PVOID ModuleBase;
-        util::kernel_array<ExportedSymbol, 2048> Symbols;
+        ExportedSymbol* Symbols;
         size_t SymbolCount = 0;
     };
 
     class ExportResolver
     {
     public:
+        ExportResolver();
+        ~ExportResolver();
         NTSTATUS BuildSnapshot(PEPROCESS Process, const util::kernel_array<ModuleRange, util::MAX_MODULES>& modules, size_t moduleCount);
+        void ClearSnapshot();
+
         bool ResolveAddress(PVOID Address, char* OutSymbolName, size_t SymbolNameSize) const;
 
     private:

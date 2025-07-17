@@ -136,6 +136,7 @@
     <ClCompile Include="Detector.cpp" />
     <ClCompile Include="Driver.cpp" />
     <ClCompile Include="ExportResolver.cpp" />
+    <ClCompile Include="Memory.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Callbacks.hpp" />
@@ -143,6 +144,7 @@
     <ClInclude Include="Detector.hpp" />
     <ClInclude Include="ExportResolver.hpp" />
     <ClInclude Include="Ioctl.hpp" />
+    <ClInclude Include="Memory.hpp" />
     <ClInclude Include="Wrappers.hpp" />
     <ClInclude Include="xxhash.h" />
   </ItemGroup>

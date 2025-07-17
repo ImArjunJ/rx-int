@@ -70,3 +70,22 @@ bool Driver::GetStatus(DriverState& state)
     state.Status = DriverStatus::NotLoaded;
     return false;
 }
+
+bool Driver::GetMemoryStats(RXINT_MEMORY_STATS& stats)
+{
+    if (!IsLoaded())
+    {
+        stats.PagedBytes = 0;
+        stats.NonPagedBytes = 0;
+        return false;
+    }
+
+    DWORD bytesReturned = 0;
+    if (DeviceIoControl(m_hDevice, IOCTL_RXINT_GET_MEMORY_STATS, NULL, 0, &stats, sizeof(stats), &bytesReturned, NULL))
+    {
+        return true;
+    }
+    stats.PagedBytes = 0;
+    stats.NonPagedBytes = 0;
+    return false;
+}

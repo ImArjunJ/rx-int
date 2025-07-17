@@ -1,12 +1,12 @@
 #include "Detector.hpp"
 
+#include "Memory.hpp"
 #include "Wrappers.hpp"
 
 namespace rx
 {
     Detector::Detector()
-        : m_isStopping(false), m_vadThreadHandle(nullptr), m_candidateCount(0), m_monitoredPid(nullptr), m_dumpHashCount(0), m_moduleCount(0),
-          m_vadBaselineCount(0)
+        : m_isStopping(false), m_vadThreadHandle(nullptr), m_candidateCount(0), m_monitoredPid(nullptr), m_dumpHashCount(0), m_moduleCount(0), m_vadBaselineCount(0)
     {
         KeInitializeEvent(&m_stopEvent, NotificationEvent, FALSE);
         KeInitializeSpinLock(&m_candidateLock);
@@ -23,6 +23,7 @@ namespace rx
     void Detector::Stop()
     {
         DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] rx-int driver unloaded\n");
+        m_exportResolver.ClearSnapshot();
         StopMonitoringProcess();
     }
 
@@ -131,49 +132,60 @@ namespace rx
             return;
         }
 
-        while (!detector->m_isStopping)
+        __try
         {
-            size_t currentSnapshotCount = 0;
-            LARGE_INTEGER delay;
-            delay.QuadPart = -10000000LL;
-            KeWaitForSingleObject(&detector->m_stopEvent, Executive, KernelMode, FALSE, &delay);
-            if (detector->m_isStopping)
-                break;
-
-            detector->TakeVadSnapshot(proc.get(), *currentSnapshot, currentSnapshotCount);
-            for (size_t i = 0; i < currentSnapshotCount; ++i)
+            while (!detector->m_isStopping)
             {
-                auto& currentRegion = (*currentSnapshot)[i];
-                bool foundInBaseline = false;
-                for (size_t j = 0; j < detector->m_vadBaselineCount; ++j)
+                size_t currentSnapshotCount = 0;
+                LARGE_INTEGER delay;
+                delay.QuadPart = -10000000LL;
+                KeWaitForSingleObject(&detector->m_stopEvent, Executive, KernelMode, FALSE, &delay);
+                if (detector->m_isStopping)
+                    break;
+
+                detector->TakeVadSnapshot(proc.get(), *currentSnapshot, currentSnapshotCount);
+                for (size_t i = 0; i < currentSnapshotCount; ++i)
                 {
-                    auto& baselineRegion = detector->m_vadBaseline[j];
-                    if (currentRegion.BaseAddress == baselineRegion.BaseAddress)
+                    auto& currentRegion = (*currentSnapshot)[i];
+                    bool foundInBaseline = false;
+                    for (size_t j = 0; j < detector->m_vadBaselineCount; ++j)
                     {
-                        foundInBaseline = true;
-                        if (IsExecutable(currentRegion.Protect) && !IsExecutable(baselineRegion.Protect))
+                        auto& baselineRegion = detector->m_vadBaseline[j];
+                        if (currentRegion.BaseAddress == baselineRegion.BaseAddress)
                         {
-                            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: permission escalation to EXECUTE at %p! dumping...\n", currentRegion.BaseAddress);
-                            detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
+                            foundInBaseline = true;
+                            if (IsExecutable(currentRegion.Protect) && !IsExecutable(baselineRegion.Protect))
+                            {
+                                DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: permission escalation to EXECUTE at %p! dumping...\n",
+                                           currentRegion.BaseAddress);
+                                detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
+                            }
+                            else if (currentRegion.ContentHash != baselineRegion.ContentHash && IsExecutable(currentRegion.Protect))
+                            {
+                                DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: self-modifying code detected at %p! dumping...\n", currentRegion.BaseAddress);
+                                detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
+                            }
+                            break;
                         }
-                        else if (currentRegion.ContentHash != baselineRegion.ContentHash && IsExecutable(currentRegion.Protect))
-                        {
-                            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: self-modifying code detected at %p! dumping...\n", currentRegion.BaseAddress);
-                            detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
-                        }
-                        break;
+                    }
+                    if (!foundInBaseline && IsExecutable(currentRegion.Protect))
+                    {
+                        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: new executable private region at %p! dumping...\n", currentRegion.BaseAddress);
+                        detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
                     }
                 }
-                if (!foundInBaseline && IsExecutable(currentRegion.Protect))
-                {
-                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] vad: new executable private region at %p! dumping...\n", currentRegion.BaseAddress);
-                    detector->DumpPages(pid, currentRegion.BaseAddress, currentRegion.RegionSize);
-                }
+
+                KeClearEvent(&detector->m_stopEvent);
             }
-            
-            KeClearEvent(&detector->m_stopEvent);
         }
-        delete currentSnapshot;
+        __finally
+        {
+            if (currentSnapshot)
+            {
+                delete currentSnapshot;
+                currentSnapshot = nullptr;
+            }
+        }
         PsReleaseProcessExitSynchronization(proc.get());
         PsTerminateSystemThread(STATUS_SUCCESS);
     }
@@ -198,6 +210,7 @@ namespace rx
     {
         if (!m_monitoredPid)
             return;
+
         m_isStopping = true;
         if (m_vadThreadHandle)
         {
@@ -220,6 +233,10 @@ namespace rx
         }
         m_moduleCount = 0;
         m_vadBaselineCount = 0;
+
+        m_exportResolver.ClearSnapshot();
+
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] monitor: stopped monitoring and freed all allocated memory\n");
     }
 
     void Detector::GetCurrentStatus(PRXINT_STATUS_INFO StatusInfo) const
@@ -317,15 +334,21 @@ namespace rx
                 info.Protect = mbi.Protect;
                 info.ContentHash = 0;
 
-                auto* buffer = static_cast<unsigned char*>(ExAllocatePoolWithTag(NonPagedPoolNx, mbi.RegionSize, util::POOL_TAG));
+                auto* buffer = static_cast<unsigned char*>(rx::mem::Allocate(NonPagedPoolNx, mbi.RegionSize, util::POOL_TAG));
                 if (buffer)
                 {
-                    SIZE_T bytesRead = 0;
-                    if (NT_SUCCESS(MmCopyVirtualMemory(Process, mbi.BaseAddress, PsGetCurrentProcess(), buffer, mbi.RegionSize, KernelMode, &bytesRead)))
+                    __try
                     {
-                        info.ContentHash = XXH64(buffer, bytesRead, 0x1337);
+                        SIZE_T bytesRead = 0;
+                        if (NT_SUCCESS(MmCopyVirtualMemory(Process, mbi.BaseAddress, PsGetCurrentProcess(), buffer, mbi.RegionSize, KernelMode, &bytesRead)))
+                        {
+                            info.ContentHash = XXH64(buffer, bytesRead, 0x1337);
+                        }
                     }
-                    ExFreePool(buffer);
+                    __finally
+                    {
+                        rx::mem::Free(buffer, util::POOL_TAG);
+                    }
                 }
                 count++;
             }
@@ -342,7 +365,7 @@ namespace rx
             return;
         }
 
-        auto* rawBuffer = static_cast<unsigned char*>(ExAllocatePoolWithTag(NonPagedPoolNx, regionSize, util::DUMP_TAG));
+        auto* rawBuffer = static_cast<unsigned char*>(rx::mem::Allocate(NonPagedPoolNx, regionSize, util::DUMP_TAG));
         if (!rawBuffer)
         {
             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to allocate buffer\n");
@@ -354,7 +377,7 @@ namespace rx
         if (!NT_SUCCESS(status) || totalBytesCopied == 0)
         {
             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: failed to copy memory from %p, status: 0x%X\n", base, status);
-            ExFreePoolWithTag(rawBuffer, util::DUMP_TAG);
+            rx::mem::Free(rawBuffer, util::DUMP_TAG);
             return;
         }
 
@@ -362,7 +385,7 @@ namespace rx
         if (IsDuplicateHash(hash))
         {
             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] dump: duplicate hash for region %p, skipping\n", base);
-            ExFreePoolWithTag(rawBuffer, util::DUMP_TAG);
+            rx::mem::Free(rawBuffer, util::DUMP_TAG);
             return;
         }
 
@@ -387,7 +410,7 @@ namespace rx
         }
 
         const ULONG reportBufferSize = 16 * 1024;
-        PCHAR reportBuffer = (PCHAR) ExAllocatePoolWithTag(NonPagedPoolNx, reportBufferSize, util::POOL_TAG);
+        PCHAR reportBuffer = (PCHAR) rx::mem::Allocate(NonPagedPoolNx, reportBufferSize, util::POOL_TAG);
         bool shouldWriteReport = false;
         if (reportBuffer)
         {
@@ -432,10 +455,10 @@ namespace rx
                     ZwClose(hFile_txt);
                 }
             }
-            ExFreePoolWithTag(reportBuffer, util::POOL_TAG);
+            rx::mem::Free(reportBuffer, util::POOL_TAG);
         }
 
-        ExFreePoolWithTag(rawBuffer, util::DUMP_TAG);
+        rx::mem::Free(rawBuffer, util::DUMP_TAG);
     }
 
     bool Detector::IsAddressInModuleList(PVOID addr) const

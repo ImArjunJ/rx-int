@@ -2,13 +2,43 @@
 
 #include <ntstrsafe.h>
 
+#include "Memory.hpp"
 #include "Wrappers.hpp"
+
 
 namespace rx
 {
+    ExportResolver::ExportResolver()
+    {
+        for (size_t i = 0; i < m_exportSnapshot.size(); ++i)
+        {
+            m_exportSnapshot[i].Symbols = nullptr;
+            m_exportSnapshot[i].SymbolCount = 0;
+        }
+    }
+    ExportResolver::~ExportResolver()
+    {
+        ClearSnapshot();
+    }
+
+    void ExportResolver::ClearSnapshot()
+    {
+        DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "[RX-INT] Clearing export snapshot and freeing associated memory.\n");
+        for (size_t i = 0; i < m_exportSnapshot.size(); ++i)
+        {
+            if (m_exportSnapshot[i].Symbols)
+            {
+                rx::mem::Free(m_exportSnapshot[i].Symbols, util::POOL_TAG);
+                m_exportSnapshot[i].Symbols = nullptr;
+                m_exportSnapshot[i].SymbolCount = 0;
+            }
+        }
+        m_snapshotModuleCount = 0;
+    }
+
     NTSTATUS ExportResolver::BuildSnapshot(PEPROCESS Process, const util::kernel_array<ModuleRange, util::MAX_MODULES>& modules, size_t moduleCount)
     {
-        m_snapshotModuleCount = 0;
+        ClearSnapshot();
         if (!Process)
             return STATUS_INVALID_PARAMETER;
 
@@ -27,8 +57,8 @@ namespace rx
             if (!NT_SUCCESS(MmCopyVirtualMemory(Process, mod.BaseAddress, PsGetCurrentProcess(), &dosHeader, sizeof(dosHeader), KernelMode, &bytesRead))
                 || dosHeader.e_magic != IMAGE_DOS_SIGNATURE)
                 continue;
-            if (!NT_SUCCESS(
-                    MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + dosHeader.e_lfanew, PsGetCurrentProcess(), &ntHeaders, sizeof(ntHeaders), KernelMode, &bytesRead))
+            if (!NT_SUCCESS(MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + dosHeader.e_lfanew, PsGetCurrentProcess(), &ntHeaders, sizeof(ntHeaders), KernelMode,
+                                                &bytesRead))
                 || ntHeaders.Signature != IMAGE_NT_SIGNATURE)
                 continue;
 
@@ -37,59 +67,89 @@ namespace rx
                 continue;
 
             pe::IMAGE_EXPORT_DIRECTORY exportDir = {0};
-            if (!NT_SUCCESS(MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDirEntry.VirtualAddress, PsGetCurrentProcess(), &exportDir, sizeof(exportDir), KernelMode,
-                                                &bytesRead)))
+            if (!NT_SUCCESS(MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDirEntry.VirtualAddress, PsGetCurrentProcess(), &exportDir, sizeof(exportDir),
+                                                KernelMode, &bytesRead)))
                 continue;
 
-            PULONG pAddrOfFunctions = (PULONG) ExAllocatePoolWithTag(NonPagedPoolNx, exportDir.NumberOfFunctions * sizeof(ULONG), util::POOL_TAG);
-            PULONG pAddrOfNames = (PULONG) ExAllocatePoolWithTag(NonPagedPoolNx, exportDir.NumberOfNames * sizeof(ULONG), util::POOL_TAG);
-            PUSHORT pAddrOfOrdinals = (PUSHORT) ExAllocatePoolWithTag(NonPagedPoolNx, exportDir.NumberOfNames * sizeof(USHORT), util::POOL_TAG);
+            PULONG pAddrOfFunctions = (PULONG) rx::mem::Allocate(NonPagedPoolNx, exportDir.NumberOfFunctions * sizeof(ULONG), util::POOL_TAG);
+            PULONG pAddrOfNames = (PULONG) rx::mem::Allocate(NonPagedPoolNx, exportDir.NumberOfNames * sizeof(ULONG), util::POOL_TAG);
+            PUSHORT pAddrOfOrdinals = (PUSHORT) rx::mem::Allocate(NonPagedPoolNx, exportDir.NumberOfNames * sizeof(USHORT), util::POOL_TAG);
 
-            if (!pAddrOfFunctions || !pAddrOfNames || !pAddrOfOrdinals)
+            __try
             {
-                continue;
-            }
-
-            MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDir.AddressOfFunctions, PsGetCurrentProcess(), pAddrOfFunctions,
-                                exportDir.NumberOfFunctions * sizeof(ULONG), KernelMode, &bytesRead);
-            MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDir.AddressOfNames, PsGetCurrentProcess(), pAddrOfNames, exportDir.NumberOfNames * sizeof(ULONG),
-                                KernelMode, &bytesRead);
-            MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDir.AddressOfNameOrdinals, PsGetCurrentProcess(), pAddrOfOrdinals,
-                                exportDir.NumberOfNames * sizeof(USHORT), KernelMode, &bytesRead);
-
-            for (ULONG j = 0; j < exportDir.NumberOfFunctions && modExports.SymbolCount < modExports.Symbols.size(); ++j)
-            {
-                ULONG functionRva = pAddrOfFunctions[j];
-                if (functionRva == 0)
-                    continue;
-
-                auto& symbol = modExports.Symbols[modExports.SymbolCount];
-                symbol.Address = (unsigned char*) mod.BaseAddress + functionRva;
-
-                if (functionRva >= exportDirEntry.VirtualAddress && functionRva < exportDirEntry.VirtualAddress + exportDirEntry.Size)
+                if (!pAddrOfFunctions || !pAddrOfNames || !pAddrOfOrdinals)
                 {
-                    MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + functionRva, PsGetCurrentProcess(), symbol.ForwarderName, sizeof(symbol.ForwarderName) - 1, KernelMode,
-                                        &bytesRead);
+                    __leave;
                 }
-                else
+
+                MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDir.AddressOfFunctions, PsGetCurrentProcess(), pAddrOfFunctions,
+                                    exportDir.NumberOfFunctions * sizeof(ULONG), KernelMode, &bytesRead);
+                MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDir.AddressOfNames, PsGetCurrentProcess(), pAddrOfNames,
+                                    exportDir.NumberOfNames * sizeof(ULONG), KernelMode, &bytesRead);
+                MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + exportDir.AddressOfNameOrdinals, PsGetCurrentProcess(), pAddrOfOrdinals,
+                                    exportDir.NumberOfNames * sizeof(USHORT), KernelMode, &bytesRead);
+
+                size_t validExportCount = 0;
+                for (ULONG j = 0; j < exportDir.NumberOfFunctions; ++j)
                 {
-                    for (ULONG k = 0; k < exportDir.NumberOfNames; ++k)
+                    if (pAddrOfFunctions[j] != 0)
                     {
-                        if (pAddrOfOrdinals[k] == j)
-                        {
-                            MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + pAddrOfNames[k], PsGetCurrentProcess(), symbol.Name, sizeof(symbol.Name) - 1, KernelMode,
-                                                &bytesRead);
-                            break;
-                        }
+                        validExportCount++;
                     }
                 }
-                modExports.SymbolCount++;
-            }
-            m_snapshotModuleCount++;
 
-            ExFreePoolWithTag(pAddrOfFunctions, util::POOL_TAG);
-            ExFreePoolWithTag(pAddrOfNames, util::POOL_TAG);
-            ExFreePoolWithTag(pAddrOfOrdinals, util::POOL_TAG);
+                if (validExportCount == 0)
+                {
+                    __leave;
+                }
+
+                modExports.Symbols = static_cast<ExportedSymbol*>(rx::mem::Allocate(PagedPool, sizeof(ExportedSymbol) * validExportCount, util::POOL_TAG));
+                if (!modExports.Symbols)
+                {
+                    __leave;
+                }
+                modExports.SymbolCount = 0;
+
+                for (ULONG j = 0; j < exportDir.NumberOfFunctions; ++j)
+                {
+                    ULONG functionRva = pAddrOfFunctions[j];
+                    if (functionRva == 0)
+                        continue;
+
+                    auto& symbol = modExports.Symbols[modExports.SymbolCount];
+                    symbol.Address = (unsigned char*) mod.BaseAddress + functionRva;
+
+                    if (functionRva >= exportDirEntry.VirtualAddress && functionRva < exportDirEntry.VirtualAddress + exportDirEntry.Size)
+                    {
+                        MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + functionRva, PsGetCurrentProcess(), symbol.ForwarderName, sizeof(symbol.ForwarderName) - 1,
+                                            KernelMode, &bytesRead);
+                    }
+                    else
+                    {
+                        for (ULONG k = 0; k < exportDir.NumberOfNames; ++k)
+                        {
+                            if (pAddrOfOrdinals[k] == j)
+                            {
+                                MmCopyVirtualMemory(Process, (unsigned char*) mod.BaseAddress + pAddrOfNames[k], PsGetCurrentProcess(), symbol.Name, sizeof(symbol.Name) - 1,
+                                                    KernelMode, &bytesRead);
+                                break;
+                            }
+                        }
+                    }
+                    modExports.SymbolCount++;
+                }
+                m_snapshotModuleCount++;
+            }
+            __finally
+            {
+                // Always free temporary buffers
+                if (pAddrOfFunctions)
+                    rx::mem::Free(pAddrOfFunctions, util::POOL_TAG);
+                if (pAddrOfNames)
+                    rx::mem::Free(pAddrOfNames, util::POOL_TAG);
+                if (pAddrOfOrdinals)
+                    rx::mem::Free(pAddrOfOrdinals, util::POOL_TAG);
+            }
         }
         return STATUS_SUCCESS;
     }

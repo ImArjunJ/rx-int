@@ -2,6 +2,9 @@
 
 #include <windows.h>
 
+#include <iomanip>
+#include <sstream>
+
 #include "Driver.hpp"
 
 TUI::TUI() : m_isRunning(true), m_uiState(UIState::MainMenu), m_hConsole(INVALID_HANDLE_VALUE), m_hInput(INVALID_HANDLE_VALUE), m_backBuffer(nullptr)
@@ -82,6 +85,7 @@ void TUI::UpdateState()
 {
     Driver driver;
     driver.GetStatus(m_driverState);
+    driver.GetMemoryStats(m_memStats);
 }
 
 void TUI::Render()
@@ -107,6 +111,11 @@ void TUI::Render()
     }
     DrawMenuItem(1, '+', L"rx-int - ");
     DrawString(14, 1, status_text, status_color);
+
+    std::wstringstream mem_stream;
+    mem_stream << L"| Mem Usage (Kernel Pool): " << L"Paged: " << std::fixed << std::setprecision(2) << (double) m_memStats.PagedBytes / 1024.0 << L" KB, " << L"Non-Paged: "
+               << std::fixed << std::setprecision(2) << (double) m_memStats.NonPagedBytes / 1024.0 << L" KB";
+    DrawString(14 + (int) status_text.length() + 1, 1, mem_stream.str(), 0x08); // Dark Gray
 
     switch (m_uiState)
     {

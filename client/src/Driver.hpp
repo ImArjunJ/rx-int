@@ -5,6 +5,7 @@
 #include <string>
 
 #include "Common.hpp"
+#include "Ioctl.hpp"
 
 class Driver
 {
@@ -18,6 +19,7 @@ public:
     bool StopMonitoring();
 
     bool GetStatus(DriverState& state);
+    bool GetMemoryStats(RXINT_MEMORY_STATS& stats);
 
 private:
     HANDLE m_hDevice;

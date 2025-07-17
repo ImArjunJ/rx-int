@@ -5,6 +5,7 @@
 
 #include "Common.hpp"
 #include "Injector.hpp"
+#include "Ioctl.hpp"
 
 class TUI
 {
@@ -39,6 +40,7 @@ private:
     bool m_isRunning;
 
     DriverState m_driverState;
+    RXINT_MEMORY_STATS m_memStats;
     std::wstring m_inputBuffer;
     std::wstring m_inputBuffer2; // second input field (dump path)
     std::wstring m_currentMessage;

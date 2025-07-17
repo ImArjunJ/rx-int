@@ -1,12 +1,15 @@
 #include "Callbacks.hpp"
 #include "Detector.hpp"
 #include "Ioctl.hpp"
+#include "Memory.hpp"
 
 NTSTATUS RxInt_DeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 extern "C" NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING RegistryPath)
 {
     UNREFERENCED_PARAMETER(RegistryPath);
+
+    rx::mem::Initialize();
 
     rx::g_Detector = new (NonPagedPool, rx::util::POOL_TAG) rx::Detector();
     if (!rx::g_Detector)
@@ -133,6 +136,18 @@ NTSTATUS RxInt_DeviceControl(PDEVICE_OBJECT DeviceObject, PIRP Irp)
         rx::g_Detector->GetCurrentStatus(outBuffer);
 
         bytesIO = sizeof(RXINT_STATUS_INFO);
+        break;
+    }
+    case IOCTL_RXINT_GET_MEMORY_STATS:
+    {
+        if (stack->Parameters.DeviceIoControl.OutputBufferLength < sizeof(RXINT_MEMORY_STATS))
+        {
+            status = STATUS_BUFFER_TOO_SMALL;
+            break;
+        }
+        auto* outBuffer = (PRXINT_MEMORY_STATS)Irp->AssociatedIrp.SystemBuffer;
+        rx::mem::GetUsage(*outBuffer);
+        bytesIO = sizeof(RXINT_MEMORY_STATS);
         break;
     }
     default:

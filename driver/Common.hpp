@@ -1,8 +1,8 @@
 #pragma once
-#include <ntifs.h>
-#include <ntstrsafe.h>
+
 
 #include "xxhash.h"
+#include "Memory.hpp"
 
 #define THREAD_QUERY_INFORMATION (0x0040)
 #define MEM_IMAGE 0x01000000
@@ -91,6 +91,7 @@ namespace rx
         private:
             T m_data[N];
         };
+
     } // namespace util
 } // namespace rx
 
@@ -337,16 +338,16 @@ typedef struct _PEB
 
 inline void* operator new(size_t size, POOL_TYPE pool, ULONG tag)
 {
-    return ExAllocatePoolWithTag(pool, size, tag);
+    return rx::mem::Allocate(pool, size, tag);
 }
 inline void operator delete(void* p)
 {
     if (p)
-        ExFreePoolWithTag(p, rx::util::POOL_TAG);
+        rx::mem::Free(p, rx::util::POOL_TAG);
 }
 inline void operator delete(void* p, size_t size)
 {
     UNREFERENCED_PARAMETER(size);
     if (p)
-        ExFreePoolWithTag(p, rx::util::POOL_TAG);
+        rx::mem::Free(p, rx::util::POOL_TAG);
 }
