@@ -1,8 +1,8 @@
 #pragma once
 
-
-#include "xxhash.h"
 #include "Memory.hpp"
+#include "xxhash.h"
+
 
 #define THREAD_QUERY_INFORMATION (0x0040)
 #define MEM_IMAGE 0x01000000
@@ -19,7 +19,7 @@ namespace rx
     namespace util
     {
         // Use a static buffer for DUMP_PATH
-        static wchar_t DUMP_PATH[260] = L"\\SystemRoot\\Temp\\dump_%llu.bin";
+        inline wchar_t DUMP_PATH[260] = L"\\SystemRoot\\Temp\\dump_%llu.bin";
         constexpr ULONG DUMP_TAG = 'rxdm';
         constexpr ULONG POOL_TAG = 'rxmm';
         constexpr ULONG MAX_CANDIDATE_PROCESSES = 8;

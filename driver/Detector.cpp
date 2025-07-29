@@ -82,6 +82,8 @@ namespace rx
             {
                 if (m_vadThreadHandle)
                 {
+                    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL, "[RX-INT] thread: module stomping hint (3) @ %p. forwarding and dumping thread start address... \n", startAddress);
+                    DumpPages(ProcessId, mbi.BaseAddress, mbi.RegionSize);
                     KeSetEvent(&m_stopEvent, 0, FALSE);
                 }
             }
@@ -138,7 +140,7 @@ namespace rx
             {
                 size_t currentSnapshotCount = 0;
                 LARGE_INTEGER delay;
-                delay.QuadPart = -10000000LL;
+                delay.QuadPart = -5000000LL;
                 KeWaitForSingleObject(&detector->m_stopEvent, Executive, KernelMode, FALSE, &delay);
                 if (detector->m_isStopping)
                     break;
@@ -440,7 +442,7 @@ namespace rx
             if (currentOffset > strlen("[RX-INT] dump: import analysis report for region at %p (size: %zu)\r\n\r\n") && shouldWriteReport)
             {
                 WCHAR txt_filename[512];
-                RtlStringCbPrintfW(txt_filename, sizeof(txt_filename), L"\\SystemRoot\\Temp\\RX_REPORT_%llu.txt", timestamp.QuadPart);
+                RtlStringCbPrintfW(txt_filename, sizeof(txt_filename), L"%s.txt", bin_filename);
 
                 UNICODE_STRING txt_path;
                 RtlInitUnicodeString(&txt_path, txt_filename);
