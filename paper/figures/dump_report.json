@@ -1,0 +1,20 @@
+ {
+  "pid" : 20684,
+  "output_dir" : "process_20684",
+  "dumped" : 
+  {
+   "total" : 1,
+   "dumped" : 1
+  },
+  "dumps" : [
+   {
+    "module" : "7ffc0fcc0000",
+    "module_size" : "137000",
+    "dump_file" : "7ffc0fcc0000.gdi32full.dll",
+    "tags_file" : "7ffc0fcc0000.gdi32full.dll.tag",
+    "dump_mode" : "REALIGNED",
+    "is_shellcode" : 0,
+    "status" : 1
+   }
+  ]
+ }
