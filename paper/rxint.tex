@@ -165,7 +165,9 @@ PEB Unlinking + Header Erasure & \parbox{3.5cm}{NtCreateThreadEx \\ SetWindowsHo
 \addlinespace
 Manual Map + Headers Intact & \parbox{3.5cm}{NtCreateThreadEx \\ SetWindowsHookEx \\ KernelCallback} & Detected & Detected (Dumped as UNMAPPED) \\
 \addlinespace
-\textbf{Manual Map + Header Erasure} & \parbox{3.5cm}{NtCreateThreadEx \\ SetWindowsHookEx \\ KernelCallback} & \textbf{Detected} & \textbf{Missed (0 suspicious)} \\ \bottomrule
+\textbf{Manual Map + Header Erasure} & \parbox{3.5cm}{NtCreateThreadEx \\ SetWindowsHookEx \\ KernelCallback} & \textbf{Detected} & \textbf{Missed (0 suspicious)} \\
+\addlinespace
+\textbf{Module Stomping} & \parbox{3.5cm}{NtCreateThreadEx \\ SetWindowsHookEx \\ KernelCallback} & \textbf{Detected} & \textbf{Missed (0 suspicious)} \\ \bottomrule
 \end{tabular}
 \end{table*}
 

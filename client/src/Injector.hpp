@@ -4,7 +4,6 @@
 #include <array>
 #include <string>
 
-
 enum class InjectionMethod
 {
     ClassicRwx,
