@@ -18,7 +18,6 @@ namespace rx
 
     namespace util
     {
-        // Use a static buffer for DUMP_PATH
         inline wchar_t DUMP_PATH[260] = L"\\SystemRoot\\Temp\\dump_%llu.bin";
         constexpr ULONG DUMP_TAG = 'rxdm';
         constexpr ULONG POOL_TAG = 'rxmm';
@@ -229,7 +228,6 @@ namespace rx::pe
         DWORD AddressOfNameOrdinals; // RVA from base of image
     } IMAGE_EXPORT_DIRECTORY, *PIMAGE_EXPORT_DIRECTORY;
 
-// Macro to get the first section header
 #define IMAGE_FIRST_SECTION(ntheader) \
     ((pe::PIMAGE_SECTION_HEADER)((ULONG_PTR) (ntheader) + FIELD_OFFSET(pe::IMAGE_NT_HEADERS, OptionalHeader) + ((ntheader))->FileHeader.SizeOfOptionalHeader))
 } // namespace rx::pe
@@ -333,7 +331,6 @@ typedef struct _PEB
     HANDLE Mutant;
     PVOID ImageBaseAddress;
     PPEB_LDR_DATA Ldr;
-    // ... other fields ...
 } PEB, *PPEB;
 
 inline void* operator new(size_t size, POOL_TYPE pool, ULONG tag)
