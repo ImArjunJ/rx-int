@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Common.hpp"
+#include "Driver.hpp"
 #include "Injector.hpp"
 #include "Ioctl.hpp"
 
@@ -15,7 +16,6 @@ public:
     void Run();
 
 private:
-    void MainLoop();
     void ProcessInput();
     void UpdateState();
     void Render();
@@ -55,4 +55,5 @@ private:
     };
     UIState m_uiState;
     InjectionMethod m_injectionMethod;
+    Driver m_driver;
 };
