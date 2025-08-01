@@ -171,14 +171,14 @@ Manual Map + Headers Intact & \parbox{3.5cm}{NtCreateThreadEx \\ SetWindowsHookE
 \end{tabular}
 \end{table*}
 
-\subsubsection{Case Study 1: Manual Map with Header Erasure}
+\subsubsection{Case Study 1, Manual Map with Header Erasure}
 This test simulates an attacker attempting to defeat signature-based scanners. A 64-bit DLL was manually mapped into the target process, and subsequently, the first 0x1000 bytes of the in-memory module, containing the DOS and NT headers, were overwritten with zeroes.
 \begin{itemize}
 \item \textbf{PE-sieve Result:} A full scan of the process reported no implants. The tool's reliance on finding PE headers to identify modules caused it to miss the payload entirely.
 \item \textbf{RX-INT Result:} The stateful VAD scanner detected a new, executable MEM\_PRIVATE memory region that was not present in its baseline. This triggered an immediate alert. The driver successfully dumped the raw memory of the headerless payload and generated an import analysis report. Fig. \ref{fig_ida_rebase} shows the raw dump loaded into IDA Pro, where we have manually rebased the image to its original address (0x7FFBFBBE1000) to begin analysis, confirming the dump's validity. The flow of detection is shown in the kernel logs in Fig.\ref{fig_dbgview_modulestomp} and Fig. \ref{fig_dbgview}, where the VAD scanner detects the new MEM\_PRIVATE region and dumps it immediately after the thread creation event is triggered by the injector.
 \end{itemize}
 
-\subsubsection{Case Study 2: Module Stomping}
+\subsubsection{Case Study 2, Module Stomping}
 This test simulated an adversary stomping the Beep function in kernel32.dll, executing a payload, and immediately restoring the original bytes.
 \begin{itemize}
 \item \textbf{PE-sieve Result:} It detected a module (gdi32full.dll) as `suspicious' due to an unrelated false-positive, however was unable to detect any actual module stomping within our target module kernel32.dll. While PE-sieve is capable of detecting modified modules, as shown in the scan summary in Fig. \ref{fig_pesieve_summary}, it was unable to detect the fast cleanup attack. The user-mode tool lost the TOCTOU race.
