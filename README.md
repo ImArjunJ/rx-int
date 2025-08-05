@@ -10,6 +10,10 @@ For further knowledge about the architecture, threat model, and full evaluation 
 
 ---
 
+#### Showcase
+
+[![RX-INT Demo](https://img.youtube.com/vi/G_LxJ6QXiz4/0.jpg)](https://youtu.be/G_LxJ6QXiz4)
+
 #### Prerequisites
 
 - Windows 10/11 x64
