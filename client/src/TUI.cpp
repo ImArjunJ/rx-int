@@ -35,6 +35,11 @@ TUI::~TUI()
 
 void TUI::Run()
 {
+    MainLoop();
+}
+
+void TUI::MainLoop()
+{
     while (m_isRunning)
     {
         UpdateState();
@@ -78,8 +83,9 @@ void TUI::ProcessInput()
 
 void TUI::UpdateState()
 {
-    m_driver.GetStatus(m_driverState);
-    m_driver.GetMemoryStats(m_memStats);
+    Driver driver;
+    driver.GetStatus(m_driverState);
+    driver.GetMemoryStats(m_memStats);
 }
 
 void TUI::Render()
@@ -235,7 +241,8 @@ void TUI::HandleMainMenuInput(const KEY_EVENT_RECORD& keyEvent)
     case '2':
         if (m_driverState.Status == DriverStatus::Monitoring)
         {
-            m_driver.StopMonitoring();
+            Driver d;
+            d.StopMonitoring();
             UpdateState();
         }
         else
@@ -310,7 +317,8 @@ void TUI::HandleAttachInput(const KEY_EVENT_RECORD& keyEvent)
                     dumpPath = L"\\SystemRoot\\Temp\\dump_%llu.bin";
                 }
 
-                if (m_driver.StartMonitoring(pid, dumpPath))
+                Driver driver;
+                if (driver.StartMonitoring(pid, dumpPath))
                 {
                     m_driverState.Status = DriverStatus::Monitoring;
                     m_driverState.MonitoredPid = pid;
