@@ -12,6 +12,7 @@ For further knowledge about the architecture, threat model, and full evaluation 
 
 #### Showcase
 
+This demo uses the [KernelCallback](https://github.com/0xHossam/KernelCallbackTable-Injection-PoC) injection method, no threads are made and the PEH is also erased.
 [![RX-INT Demo](https://img.youtube.com/vi/G_LxJ6QXiz4/0.jpg)](https://youtu.be/G_LxJ6QXiz4)
 
 #### Prerequisites
