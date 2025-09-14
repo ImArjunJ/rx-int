@@ -6,7 +6,7 @@
 
 `RX-INT` is a kernel-mode engine for Windows that detects and dumps "fileless" threats in real-time allowing for a further analysis pipeline.
 
-For further knowledge about the architecture, threat model, and full evaluation results, **[please read the research paper](https://github.com/ImArjunJ/rx-int/blob/master/paper/rxint.pdf)**.
+For further knowledge about the architecture, threat model, and full evaluation results, **[please read the research paper](https://arxiv.org/abs/2508.03879)**.
 
 ---
 
@@ -45,3 +45,4 @@ If you use this project in your research, please cite the paper:
   year={2025},
 }
 ```
+
